@@ -110,12 +110,6 @@ app.post('/adp/deployOne', (req, res) => {
             responseobject = await sendRequest(getReqOptions, id);
             console.log('Detailfile: ' + JSON.stringify(responseobject));
         }
-        // detailId.forEach(element => {
-        //     id = element;
-        //     // console.log(id);
-        //     responseobject = sendRequest(getReqOptions, id);
-        //     console.log(responseobject);
-        // });
 
         res.send('Deploying ' + req.body.id + '...');
     }

@@ -6,7 +6,7 @@ const querystring = require('querystring');
 const PORT = process.env.PORT || 8080;
 
 let workPackage = new Array();
-let serverAdress = "";
+let serverAdress = "localhost";
 let serverPath = "";
 
 const app = express();
@@ -43,41 +43,83 @@ app.post('/adp/setPath', (req, res) => {
     }
 });
 
-app.post('/adp/deployOne/:id', (req, res) => {
+app.post('/adp/deployOne', (req, res) => {
     console.log('[POST] ' + req.url + '\t' + JSON.stringify(req.body));
 
     // let postData = querystring.stringify({
     //     'id': req.params.id
     // });
 
-    let getReqOptions = {
-        hostname: this.serverAdress,
-        port: 8080,
-        path: this.serverPath + "/" + req.params.id,
-        method: 'GET',
-        headers: {}
+    let responseobject = new Object();
+    function sendRequest(getReqOptions, id) {
+        return new Promise((resolve, reject) => {
+            let getReq = http.request(getReqOptions, (res) => {
+                // console.log(`STATUS: ${res.statusCode}`);
+                // console.log(`HEADERS: ${JSON.stringify(res.headers)}`);
+                res.setEncoding('utf8');
+                res.on('data', (chunk) => {
+                    // console.log(`BODY: ${chunk}`);
+                    responseobject = JSON.parse(chunk);
+                });
+                res.on('end', () => {
+                    // console.log('no more data in response.');
+                    resolve(responseobject);
+                });
+            });
+
+            getReq.on('error', (e) => {
+                console.error(`problem with request: ${e.message}`);
+                reject();
+            });
+            getReq.end(JSON.stringify({'id': id}));
+        });
     }
 
-    // console.log(JSON.stringify(getReqOptions));
+    async function main(){
+        let id = req.body.id;
+        let getReqOptions = {
+            hostname: this.serverAdress,
+            port: 8081,
+            path: '/cst/content',
+            method: 'POST',
+            headers: {
+                "Content-Type": "application/json"
+            }
+        };
+    
+        // console.log(JSON.stringify(getReqOptions));
+        responseobject = await sendRequest(getReqOptions, id);
+        console.log('Content Object: ' + JSON.stringify(responseobject));
 
-    let getReq = http.request(getReqOptions, (res) => {
-        console.log(`STATUS: ${res.statusCode}`);
-        console.log(`HEADERS: ${JSON.stringify(res.headers)}`);
-        res.setEncoding('utf8');
-        res.on('data', (chunk) => {
-            console.log(`BODY: ${chunk}`);
-        });
-        res.on('end', () => {
-            console.log('no more data in response.');
-        });
-    });
+        metaId = responseobject.metaId;
+        detailId = responseobject.detailId;
 
-    getReq.on('error', (e) => {
-        console.error(`problem with request: ${e.message}`);
-    });
-    getReq.end();
+        id = metaId;
+        // console.log(id);
 
-    res.send('Deploying ' + req.params.id + '...');
+        getReqOptions.path = '/cst/meta';
+    
+        // console.log(JSON.stringify(getReqOptions));
+        responseobject = await sendRequest(getReqOptions, id);
+        console.log('Metafile: ' + JSON.stringify(responseobject));
+
+        getReqOptions.path = '/cst/detail';
+        
+        while(detailId.length > 0){
+            id = detailId.shift();
+            responseobject = await sendRequest(getReqOptions, id);
+            console.log('Detailfile: ' + JSON.stringify(responseobject));
+        }
+        // detailId.forEach(element => {
+        //     id = element;
+        //     // console.log(id);
+        //     responseobject = sendRequest(getReqOptions, id);
+        //     console.log(responseobject);
+        // });
+
+        res.send('Deploying ' + req.body.id + '...');
+    }
+    main();
 });
 
 app.listen(PORT, () => {console.log(`listening on port ${PORT}...`)});

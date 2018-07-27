@@ -45,75 +45,91 @@ app.post('/adp/setPath', (req, res) => {
 
 app.post('/adp/deployOne', (req, res) => {
     console.log('[POST] ' + req.url + '\t' + JSON.stringify(req.body));
-
-    // let postData = querystring.stringify({
-    //     'id': req.params.id
-    // });
-
-    let responseobject = new Object();
-    function sendRequest(getReqOptions, id) {
-        return new Promise((resolve, reject) => {
-            let getReq = http.request(getReqOptions, (res) => {
-                // console.log(`STATUS: ${res.statusCode}`);
-                // console.log(`HEADERS: ${JSON.stringify(res.headers)}`);
-                res.setEncoding('utf8');
-                res.on('data', (chunk) => {
-                    // console.log(`BODY: ${chunk}`);
-                    responseobject = JSON.parse(chunk);
-                });
-                res.on('end', () => {
-                    // console.log('no more data in response.');
-                    resolve(responseobject);
-                });
-            });
-
-            getReq.on('error', (e) => {
-                console.error(`problem with request: ${e.message}`);
-                reject();
-            });
-            getReq.end(JSON.stringify({'id': id}));
-        });
-    }
-
-    async function main(){
-        let id = req.body.id;
-        let getReqOptions = {
-            hostname: this.serverAdress,
-            port: 8081,
-            path: '/cst/content',
-            method: 'POST',
-            headers: {
-                "Content-Type": "application/json"
-            }
-        };
-    
-        // console.log(JSON.stringify(getReqOptions));
-        responseobject = await sendRequest(getReqOptions, id);
-        console.log('Content Object: ' + JSON.stringify(responseobject));
-
-        metaId = responseobject.metaId;
-        detailId = responseobject.detailId;
-
-        id = metaId;
-        // console.log(id);
-
-        getReqOptions.path = '/cst/meta';
-    
-        // console.log(JSON.stringify(getReqOptions));
-        responseobject = await sendRequest(getReqOptions, id);
-        console.log('Metafile: ' + JSON.stringify(responseobject));
-
-        getReqOptions.path = '/cst/detail';
-        
-        while(detailId.length > 0){
-            id = detailId.shift();
-            responseobject = await sendRequest(getReqOptions, id);
-            console.log('Detailfile: ' + JSON.stringify(responseobject));
-        }
-
-        res.send('Deploying ' + req.body.id + '...');
-    }
-    main();
+    main(req,res);
 });
+
+function sendRequest(reqOptions, body) {
+    return new Promise((resolve, reject) => {
+        let req = http.request(reqOptions, (res) => {
+            // console.log(`STATUS: ${res.statusCode}`);
+            // console.log(`HEADERS: ${JSON.stringify(res.headers)}`);
+            res.setEncoding('utf8');
+            res.on('data', (chunk) => {
+                responseobject = JSON.parse(chunk);
+            });
+            res.on('end', () => {
+                resolve(responseobject);
+            });
+        });
+
+        req.write(JSON.stringify(body));
+
+        req.on('error', (e) => {
+            console.error(`problem with request: ${e.message}`);
+            reject(e);
+        });
+        req.end();
+    });
+}
+
+async function main(req,res){
+    let responseobject = new Object();
+
+    let id = req.body.id;
+    let body = {
+        "id": id
+    };
+    let reqOptions = {
+        hostname: this.serverAdress,
+        port: 8081,
+        path: '/cst/content',
+        method: 'POST',
+        headers: {
+            "Content-Type": "application/json"
+        }
+    };
+
+    // Do the first request to get all related content for the resource
+    responseobject = await sendRequest(reqOptions, body);
+
+    let completeRessourceRelations = responseobject;
+    let metaId = responseobject.metaId;
+    let detailId = responseobject.detailId;
+
+    // Prepare the Metadata request
+    // set the body of the Metadata object request
+    body = {
+        "id": completeRessourceRelations.metaId
+    }
+    
+    // Set the hostname, path and port of the metadata webservice
+    reqOptions.hostname = this.serverAdress;
+    reqOptions.path = '/cst/meta';
+    reqOptions.port = 8081;
+
+    // Do the Metadata request
+    responseobject = await sendRequest(reqOptions, body);
+    console.log('Metafile: ' + JSON.stringify(responseobject));
+
+    // Prepare the Detail requests
+    // set the body of the Detail object request
+    body = {
+        "id": null
+    }
+
+    // Set the hostname, path and port of the metadata webservice
+    reqOptions.hostname = this.serverAdress;
+    reqOptions.path = '/cst/detail';
+    reqOptions.port = 8081;
+    
+    // Do the Detail requests
+    while(completeRessourceRelations.detailId.length > 0){
+        body.id = completeRessourceRelations.detailId.shift();
+        responseobject = await sendRequest(reqOptions, body);
+        console.log('Detailfile: ' + JSON.stringify(responseobject));
+    }
+
+    res.send('Deploying ' + req.body.id + '...');
+}
 
 app.listen(PORT, () => {console.log(`listening on port ${PORT}...`)});
